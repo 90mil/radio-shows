@@ -183,7 +183,7 @@ function createShowBox(show, fadeIn = true, existingBox = null) {
 
 // Main Functions
 function playShow(showKey) {
-    const showUrl = `https://www.mixcloud.com/widget/iframe/?feed=${showKey}&autoplay=true`;
+    const showUrl = `https://player-widget.mixcloud.com/widget/iframe/?feed=${showKey}&autoplay=true`;
     mixcloudWidget.src = showUrl;
     playBarContainer.classList.add('active');
     playBarContainer.style.display = 'flex';
