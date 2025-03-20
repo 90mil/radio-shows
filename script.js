@@ -1,6 +1,7 @@
 // Constants
 const CLOUDCAST_API_URL = 'https://api.mixcloud.com/90milradio/cloudcasts/?limit=100';
-const BATCH_SIZE = 10;
+const BATCH_SIZE = 6; // Smaller batch size for smoother loading
+const BATCH_DELAY = 50; // Milliseconds between batches
 const RANDOM_COLORS = ['#011410', '#003d2f', '#c25d05'];
 
 // DOM Elements
@@ -71,12 +72,42 @@ function createShowBox(show) {
     showBox.classList.add('show-box');
     showBox.style.backgroundColor = '#011411';
 
-    // Show image
-    const img = document.createElement('img');
-    img.src = show.pictures?.large || '';
+    // Create image container first
+    const imageContainer = document.createElement('div');
+    imageContainer.classList.add('image-container');
+
+    // Add loading indicator inside image container
+    const loadingDiv = document.createElement('div');
+    loadingDiv.classList.add('show-loading');
+    loadingDiv.innerHTML = '<div class="loading-spinner"></div>';
+    imageContainer.appendChild(loadingDiv);
+
+    showBox.appendChild(imageContainer);
+
+    // Lazy load image
+    const img = new Image();
+    img.classList.add('show-image');
+
+    const imageUrl = show.pictures?.large || show.pictures?.medium || show.pictures?.small || '';
+
+    // Set src after adding event listeners
+    img.onload = () => {
+        // Replace loading spinner with image
+        loadingDiv.remove();
+        imageContainer.appendChild(img);
+        img.classList.add('loaded');
+    };
+
+    img.onerror = () => {
+        img.src = 'https://picsum.photos/200/200';
+        loadingDiv.remove();
+        imageContainer.appendChild(img);
+        img.classList.add('loaded');
+    };
+
+    img.src = imageUrl;
     img.alt = show.name || 'Show image';
-    img.onerror = () => img.src = 'default-show-image.png'; // Add a default image
-    showBox.appendChild(img);
+    img.loading = 'lazy';
 
     // Show name
     const showName = document.createElement('div');
@@ -104,20 +135,18 @@ function createShowBox(show) {
     description.textContent = show.description || 'No description available.';
     showBox.appendChild(description);
 
-    // Uploads
-    show.uploads.forEach(upload => {
-        const playContainer = document.createElement('div');
-        playContainer.classList.add('play-container');
+    // Single play container for the show
+    const playContainer = document.createElement('div');
+    playContainer.classList.add('play-container');
 
-        playContainer.appendChild(createPlayButton(upload.key));
+    playContainer.appendChild(createPlayButton(show.key));
 
-        const playDate = document.createElement('div');
-        playDate.classList.add('play-date');
-        playDate.textContent = formatDate(upload.created_time);
-        playContainer.appendChild(playDate);
+    const playDate = document.createElement('div');
+    playDate.classList.add('play-date');
+    playDate.textContent = formatDate(show.created_time);
+    playContainer.appendChild(playDate);
 
-        showBox.appendChild(playContainer);
-    });
+    showBox.appendChild(playContainer);
 
     return showBox;
 }
@@ -144,6 +173,7 @@ async function renderShows() {
     showContainer.innerHTML = 'Loading shows...';
 
     try {
+        // First fetch the basic show list
         const { data: shows } = await fetchShows();
 
         if (shows.length === 0) {
@@ -151,42 +181,55 @@ async function renderShows() {
             return;
         }
 
-        const mergedShows = {};
-
-        // Fetch and merge show details
-        for (const show of shows) {
-            const showDetails = await fetchShowDetails(show.key);
-            if (!showDetails) continue;
-
-            const showTitle = showDetails.name.split(' hosted by')[0].trim();
-            const hostName = showDetails.name.match(/hosted by (.+)/i)?.[1] || 'Unknown Host';
-
-            if (!mergedShows[showTitle]) {
-                mergedShows[showTitle] = { ...showDetails, hostName, uploads: [] };
-            }
-            mergedShows[showTitle].uploads.push(showDetails);
-        }
-
-        // Sort and render shows
         showContainer.innerHTML = '';
-        const sortedShows = Object.values(mergedShows)
-            .sort((a, b) => new Date(b.created_time) - new Date(a.created_time));
+        let processedShows = 0;
 
-        let index = 0;
+        // Process shows in parallel batches
+        async function processShowBatch() {
+            const batchShows = shows.slice(processedShows, processedShows + BATCH_SIZE);
 
-        function renderNextBatch() {
-            const nextBatch = sortedShows.slice(index, index + BATCH_SIZE);
-            nextBatch.forEach(show => {
-                showContainer.appendChild(createShowBox(show));
+            // Fetch show details in parallel
+            const showPromises = batchShows.map(async (show) => {
+                const showDetails = await fetchShowDetails(show.key);
+                console.log('Show details:', showDetails); // Debug show data
+                if (!showDetails) return null;
+
+                const showTitle = showDetails.name.split(' hosted by')[0].trim();
+                const hostName = showDetails.name.match(/hosted by (.+)/i)?.[1] || 'Unknown Host';
+
+                return {
+                    title: showTitle,
+                    details: { ...showDetails, hostName }
+                };
             });
 
-            index += BATCH_SIZE;
-            if (index < sortedShows.length) {
-                setTimeout(renderNextBatch, 100);
+            // Wait for all shows in the batch to load
+            const loadedShows = await Promise.all(showPromises);
+
+            // Render the loaded shows
+            loadedShows.forEach(show => {
+                if (!show) return;
+                const showBox = createShowBox(show.details);
+                showContainer.appendChild(showBox);
+
+                // Add fade-in animation
+                showBox.style.opacity = '0';
+                requestAnimationFrame(() => {
+                    showBox.style.transition = 'opacity 0.3s ease-in';
+                    showBox.style.opacity = '1';
+                });
+            });
+
+            processedShows += BATCH_SIZE;
+
+            // Continue with next batch if there are more shows
+            if (processedShows < shows.length) {
+                setTimeout(processShowBatch, BATCH_DELAY);
             }
         }
 
-        renderNextBatch();
+        // Start processing shows
+        await processShowBatch();
 
     } catch (error) {
         console.error('Error rendering shows:', error);
