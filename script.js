@@ -197,52 +197,55 @@ async function renderShows() {
         // Track merged shows
         const mergedShows = {};
         let processedCount = 0;
-        
-        async function processNextBatch() {
+
+        // Process shows in smaller batches
+        async function processBatch() {
             const batchShows = shows.slice(processedCount, processedCount + BATCH_SIZE);
             if (batchShows.length === 0) return;
 
             // Process this batch
-            const batchPromises = batchShows.map(async (show) => {
+            for (const show of batchShows) {
                 const showDetails = await fetchShowDetails(show.key);
-                if (!showDetails) return;
+                if (!showDetails) continue;
 
                 const showTitle = showDetails.name.split(' hosted by')[0].trim();
                 const hostName = showDetails.name.match(/hosted by (.+)/i)?.[1] || 'Unknown Host';
 
                 if (!mergedShows[showTitle]) {
+                    // Create new show entry
                     mergedShows[showTitle] = {
                         ...showDetails,
                         hostName,
                         name: showTitle,
                         uploads: [showDetails]
                     };
-                    return mergedShows[showTitle];
+                    
+                    // Render the show immediately
+                    const showBox = createShowBox(mergedShows[showTitle]);
+                    showContainer.appendChild(showBox);
                 } else {
+                    // Update existing show with new upload
                     mergedShows[showTitle].uploads.push(showDetails);
-                    return null; // Don't render duplicate shows
+                    // Re-render the updated show
+                    const existingBox = Array.from(showContainer.children)
+                        .find(box => box.querySelector('.show-name').textContent === showTitle);
+                    if (existingBox) {
+                        const updatedBox = createShowBox(mergedShows[showTitle]);
+                        existingBox.replaceWith(updatedBox);
+                    }
                 }
-            });
-
-            // Wait for all shows in this batch to be processed
-            const newShows = (await Promise.all(batchPromises)).filter(Boolean);
-
-            // Render new shows from this batch
-            newShows.forEach(show => {
-                const showBox = createShowBox(show);
-                showContainer.appendChild(showBox);
-            });
+            }
 
             processedCount += BATCH_SIZE;
 
-            // Process next batch after a delay
+            // Continue with next batch after a delay
             if (processedCount < shows.length) {
-                setTimeout(processNextBatch, BATCH_DELAY);
+                setTimeout(() => processBatch(), BATCH_DELAY);
             }
         }
 
         // Start processing
-        await processNextBatch();
+        await processBatch();
 
     } catch (error) {
         console.error('Error rendering shows:', error);
