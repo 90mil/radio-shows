@@ -232,7 +232,6 @@ async function loadMoreShows() {
     }
 }
 
-// Modify renderShows to accept additional content
 async function renderShows(shows = null, isAdditional = false) {
     if (!isAdditional) {
         showContainer.innerHTML = 'Loading shows...';
@@ -252,20 +251,18 @@ async function renderShows(shows = null, isAdditional = false) {
             showContainer.innerHTML = '';
         }
 
-        // Get existing shows if this is additional content
-        const mergedShows = {};
-        if (isAdditional) {
-            // Get existing shows from DOM
-            Array.from(showContainer.children).forEach(box => {
-                const title = box.querySelector('.show-name').textContent;
-                const existingShow = box.__showData; // Store show data on DOM element
-                if (existingShow) {
-                    mergedShows[title] = existingShow;
-                }
-            });
-        }
-
         let processedCount = 0;
+        const mergedShows = new Map(); // Track shows across all batches
+        const existingBoxes = new Map(); // Track existing DOM elements
+
+        // Initialize existingBoxes with current DOM elements
+        Array.from(showContainer.children).forEach(box => {
+            const title = box.querySelector('.show-name').textContent;
+            existingBoxes.set(title, box);
+            if (box.__showData) {
+                mergedShows.set(title, box.__showData);
+            }
+        });
 
         async function processBatch() {
             const batchShows = showsToRender.slice(processedCount, processedCount + BATCH_SIZE);
@@ -278,23 +275,20 @@ async function renderShows(shows = null, isAdditional = false) {
                 const showTitle = showDetails.name.split(' hosted by')[0].trim();
                 const hostName = showDetails.name.match(/hosted by (.+)/i)?.[1] || 'Unknown Host';
 
-                if (!mergedShows[showTitle]) {
-                    mergedShows[showTitle] = {
+                if (!mergedShows.has(showTitle)) {
+                    mergedShows.set(showTitle, {
                         ...showDetails,
                         hostName,
                         name: showTitle,
                         uploads: [showDetails],
                         latestDate: new Date(showDetails.created_time)
-                    };
+                    });
                 } else {
-                    // Check if this upload is already included
-                    const existingKeys = new Set(mergedShows[showTitle].uploads.map(u => u.key));
-                    if (!existingKeys.has(showDetails.key)) {
-                        mergedShows[showTitle].uploads.push(showDetails);
-                        const newDate = new Date(showDetails.created_time);
-                        if (newDate > mergedShows[showTitle].latestDate) {
-                            mergedShows[showTitle].latestDate = newDate;
-                        }
+                    const existingShow = mergedShows.get(showTitle);
+                    existingShow.uploads.push(showDetails);
+                    const newDate = new Date(showDetails.created_time);
+                    if (newDate > existingShow.latestDate) {
+                        existingShow.latestDate = newDate;
                     }
                 }
                 return showTitle;
@@ -302,32 +296,25 @@ async function renderShows(shows = null, isAdditional = false) {
 
             await Promise.all(batchPromises);
 
-            // Sort all shows by latest date
-            const sortedShows = Object.values(mergedShows)
+            // Sort all shows
+            const sortedShows = Array.from(mergedShows.values())
                 .sort((a, b) => b.latestDate - a.latestDate);
 
-            // Update DOM efficiently
-            const currentBoxes = new Map(
-                Array.from(showContainer.children)
-                    .filter(el => !el.id?.includes('scroll-loader'))
-                    .map(box => [
-                        box.querySelector('.show-name').textContent,
-                        box
-                    ])
-            );
-
-            // Create or update shows in sorted order
+            // Update positions of existing boxes and add new ones
             sortedShows.forEach((show, index) => {
-                const existingBox = currentBoxes.get(show.name);
+                const existingBox = existingBoxes.get(show.name);
                 if (existingBox) {
+                    // Update existing box
                     const updatedBox = createShowBox(show, false, existingBox);
-                    updatedBox.style.opacity = '1';
-                    updatedBox.__showData = show; // Store show data on DOM element
+                    updatedBox.__showData = show;
                     existingBox.replaceWith(updatedBox);
+                    existingBoxes.set(show.name, updatedBox);
                 } else {
+                    // Create new box
                     const newBox = createShowBox(show, true);
-                    newBox.__showData = show; // Store show data on DOM element
+                    newBox.__showData = show;
                     showContainer.appendChild(newBox);
+                    existingBoxes.set(show.name, newBox);
                 }
             });
 
