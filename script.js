@@ -156,13 +156,15 @@ function createShowBox(show, fadeIn = true, existingBox = null) {
     const playDatesContainer = document.createElement('div');
     playDatesContainer.classList.add('play-dates-container');
 
-    // Sort uploads by date (newest first)
-    const sortedUploads = [...show.uploads].sort((a, b) =>
+    // Sort uploads by date (newest first) and remove duplicates
+    const uniqueUploads = [...new Map(show.uploads.map(upload => 
+        [formatDate(upload.created_time), upload]
+    )).values()].sort((a, b) => 
         new Date(b.created_time) - new Date(a.created_time)
     );
 
-    // Add each upload as a separate play container
-    sortedUploads.forEach(upload => {
+    // Add each unique upload as a separate play container
+    uniqueUploads.forEach(upload => {
         const playContainer = document.createElement('div');
         playContainer.classList.add('play-container');
 
@@ -203,7 +205,7 @@ async function fetchShows() {
 function handleScroll() {
     const scrollPosition = window.innerHeight + window.scrollY;
     const documentHeight = document.documentElement.scrollHeight;
-    
+
     // If we're near the bottom (100px threshold) and not currently loading
     if (scrollPosition > documentHeight - 100 && !isLoadingMore) {
         loadMoreShows();
@@ -215,7 +217,7 @@ async function loadMoreShows() {
     try {
         isLoadingMore = true;
         currentOffset += 100;
-        
+
         const { data: newShows } = await fetchWithTimeout(
             `${CLOUDCAST_API_URL}&offset=${currentOffset}`
         );
