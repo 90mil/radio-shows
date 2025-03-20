@@ -140,18 +140,26 @@ function createShowBox(show, fadeIn = true, existingBox = null) {
         showBox.appendChild(genres);
     }
 
-    // Description
+    // Description container with dynamic margin based on number of uploads
     const description = document.createElement('div');
     description.classList.add('description');
     description.textContent = show.description || 'No description available.';
+    // Add margin based on number of uploads (each date container is ~40px)
+    const marginBottom = 20 + (show.uploads.length * 40);
+    description.style.marginBottom = `${marginBottom}px`;
     showBox.appendChild(description);
 
     // Container for all play dates
     const playDatesContainer = document.createElement('div');
     playDatesContainer.classList.add('play-dates-container');
 
+    // Sort uploads by date (newest first)
+    const sortedUploads = [...show.uploads].sort((a, b) => 
+        new Date(b.created_time) - new Date(a.created_time)
+    );
+
     // Add each upload as a separate play container
-    show.uploads.forEach(upload => {
+    sortedUploads.forEach(upload => {
         const playContainer = document.createElement('div');
         playContainer.classList.add('play-container');
 
