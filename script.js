@@ -252,14 +252,24 @@ async function renderShows(shows = null, isAdditional = false) {
             showContainer.innerHTML = '';
         }
 
+        // Get existing shows if this is additional content
         const mergedShows = {};
+        if (isAdditional) {
+            // Get existing shows from DOM
+            Array.from(showContainer.children).forEach(box => {
+                const title = box.querySelector('.show-name').textContent;
+                const existingShow = box.__showData; // Store show data on DOM element
+                if (existingShow) {
+                    mergedShows[title] = existingShow;
+                }
+            });
+        }
+
         let processedCount = 0;
 
         async function processBatch() {
             const batchShows = showsToRender.slice(processedCount, processedCount + BATCH_SIZE);
-            if (batchShows.length === 0) {
-                return;
-            }
+            if (batchShows.length === 0) return;
 
             const batchPromises = batchShows.map(async (show) => {
                 const showDetails = await fetchShowDetails(show.key);
@@ -277,10 +287,14 @@ async function renderShows(shows = null, isAdditional = false) {
                         latestDate: new Date(showDetails.created_time)
                     };
                 } else {
-                    mergedShows[showTitle].uploads.push(showDetails);
-                    const newDate = new Date(showDetails.created_time);
-                    if (newDate > mergedShows[showTitle].latestDate) {
-                        mergedShows[showTitle].latestDate = newDate;
+                    // Check if this upload is already included
+                    const existingKeys = new Set(mergedShows[showTitle].uploads.map(u => u.key));
+                    if (!existingKeys.has(showDetails.key)) {
+                        mergedShows[showTitle].uploads.push(showDetails);
+                        const newDate = new Date(showDetails.created_time);
+                        if (newDate > mergedShows[showTitle].latestDate) {
+                            mergedShows[showTitle].latestDate = newDate;
+                        }
                     }
                 }
                 return showTitle;
@@ -308,16 +322,17 @@ async function renderShows(shows = null, isAdditional = false) {
                 if (existingBox) {
                     const updatedBox = createShowBox(show, false, existingBox);
                     updatedBox.style.opacity = '1';
+                    updatedBox.__showData = show; // Store show data on DOM element
                     existingBox.replaceWith(updatedBox);
                 } else {
                     const newBox = createShowBox(show, true);
+                    newBox.__showData = show; // Store show data on DOM element
                     showContainer.appendChild(newBox);
                 }
             });
 
             processedCount += BATCH_SIZE;
 
-            // Continue processing if there are more shows in this set
             if (processedCount < showsToRender.length) {
                 await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
                 await processBatch();
