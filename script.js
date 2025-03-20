@@ -71,6 +71,7 @@ function createShowBox(show) {
     const showBox = document.createElement('div');
     showBox.classList.add('show-box');
     showBox.style.backgroundColor = '#011411';
+    showBox.style.opacity = '0'; // Start invisible
 
     // Create image container first
     const imageContainer = document.createElement('div');
@@ -90,12 +91,15 @@ function createShowBox(show) {
 
     const imageUrl = show.pictures?.large || show.pictures?.medium || show.pictures?.small || '';
 
-    // Set src after adding event listeners
     img.onload = () => {
-        // Replace loading spinner with image
         loadingDiv.remove();
         imageContainer.appendChild(img);
         img.classList.add('loaded');
+        // Fade in the whole show box after image loads
+        requestAnimationFrame(() => {
+            showBox.style.transition = 'opacity 0.3s ease-in';
+            showBox.style.opacity = '1';
+        });
     };
 
     img.onerror = () => {
@@ -135,18 +139,26 @@ function createShowBox(show) {
     description.textContent = show.description || 'No description available.';
     showBox.appendChild(description);
 
-    // Single play container for the show
-    const playContainer = document.createElement('div');
-    playContainer.classList.add('play-container');
+    // Container for all play dates
+    const playDatesContainer = document.createElement('div');
+    playDatesContainer.classList.add('play-dates-container');
 
-    playContainer.appendChild(createPlayButton(show.key));
+    // Add each upload as a separate play container
+    show.uploads.forEach(upload => {
+        const playContainer = document.createElement('div');
+        playContainer.classList.add('play-container');
 
-    const playDate = document.createElement('div');
-    playDate.classList.add('play-date');
-    playDate.textContent = formatDate(show.created_time);
-    playContainer.appendChild(playDate);
+        playContainer.appendChild(createPlayButton(upload.key));
 
-    showBox.appendChild(playContainer);
+        const playDate = document.createElement('div');
+        playDate.classList.add('play-date');
+        playDate.textContent = formatDate(upload.created_time);
+        playContainer.appendChild(playDate);
+
+        playDatesContainer.appendChild(playContainer);
+    });
+
+    showBox.appendChild(playDatesContainer);
 
     return showBox;
 }
@@ -173,7 +185,6 @@ async function renderShows() {
     showContainer.innerHTML = 'Loading shows...';
 
     try {
-        // First fetch the basic show list
         const { data: shows } = await fetchShows();
 
         if (shows.length === 0) {
@@ -182,54 +193,56 @@ async function renderShows() {
         }
 
         showContainer.innerHTML = '';
-        let processedShows = 0;
+        
+        // Track merged shows
+        const mergedShows = {};
+        let processedCount = 0;
+        
+        async function processNextBatch() {
+            const batchShows = shows.slice(processedCount, processedCount + BATCH_SIZE);
+            if (batchShows.length === 0) return;
 
-        // Process shows in parallel batches
-        async function processShowBatch() {
-            const batchShows = shows.slice(processedShows, processedShows + BATCH_SIZE);
-
-            // Fetch show details in parallel
-            const showPromises = batchShows.map(async (show) => {
+            // Process this batch
+            const batchPromises = batchShows.map(async (show) => {
                 const showDetails = await fetchShowDetails(show.key);
-                console.log('Show details:', showDetails); // Debug show data
-                if (!showDetails) return null;
+                if (!showDetails) return;
 
                 const showTitle = showDetails.name.split(' hosted by')[0].trim();
                 const hostName = showDetails.name.match(/hosted by (.+)/i)?.[1] || 'Unknown Host';
 
-                return {
-                    title: showTitle,
-                    details: { ...showDetails, hostName }
-                };
+                if (!mergedShows[showTitle]) {
+                    mergedShows[showTitle] = {
+                        ...showDetails,
+                        hostName,
+                        name: showTitle,
+                        uploads: [showDetails]
+                    };
+                    return mergedShows[showTitle];
+                } else {
+                    mergedShows[showTitle].uploads.push(showDetails);
+                    return null; // Don't render duplicate shows
+                }
             });
 
-            // Wait for all shows in the batch to load
-            const loadedShows = await Promise.all(showPromises);
+            // Wait for all shows in this batch to be processed
+            const newShows = (await Promise.all(batchPromises)).filter(Boolean);
 
-            // Render the loaded shows
-            loadedShows.forEach(show => {
-                if (!show) return;
-                const showBox = createShowBox(show.details);
+            // Render new shows from this batch
+            newShows.forEach(show => {
+                const showBox = createShowBox(show);
                 showContainer.appendChild(showBox);
-
-                // Add fade-in animation
-                showBox.style.opacity = '0';
-                requestAnimationFrame(() => {
-                    showBox.style.transition = 'opacity 0.3s ease-in';
-                    showBox.style.opacity = '1';
-                });
             });
 
-            processedShows += BATCH_SIZE;
+            processedCount += BATCH_SIZE;
 
-            // Continue with next batch if there are more shows
-            if (processedShows < shows.length) {
-                setTimeout(processShowBatch, BATCH_DELAY);
+            // Process next batch after a delay
+            if (processedCount < shows.length) {
+                setTimeout(processNextBatch, BATCH_DELAY);
             }
         }
 
-        // Start processing shows
-        await processShowBatch();
+        // Start processing
+        await processNextBatch();
 
     } catch (error) {
         console.error('Error rendering shows:', error);
