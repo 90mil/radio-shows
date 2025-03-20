@@ -67,51 +67,58 @@ function createPlayButton(uploadKey) {
     return button;
 }
 
-function createShowBox(show) {
+function createShowBox(show, fadeIn = true, existingBox = null) {
     const showBox = document.createElement('div');
     showBox.classList.add('show-box');
     showBox.style.backgroundColor = '#011411';
-    showBox.style.opacity = '0'; // Start invisible
+    showBox.style.opacity = fadeIn ? '0' : '1';
 
     // Create image container first
     const imageContainer = document.createElement('div');
     imageContainer.classList.add('image-container');
 
-    // Add loading indicator inside image container
-    const loadingDiv = document.createElement('div');
-    loadingDiv.classList.add('show-loading');
-    loadingDiv.innerHTML = '<div class="loading-spinner"></div>';
-    imageContainer.appendChild(loadingDiv);
+    // Check if we have an existing loaded image to reuse
+    const existingImage = existingBox?.querySelector('.show-image.loaded');
+    if (existingImage) {
+        // Reuse existing loaded image
+        imageContainer.appendChild(existingImage.cloneNode(true));
+        showBox.appendChild(imageContainer);
+    } else {
+        // Add loading indicator and load new image
+        const loadingDiv = document.createElement('div');
+        loadingDiv.classList.add('show-loading');
+        loadingDiv.innerHTML = '<div class="loading-spinner"></div>';
+        imageContainer.appendChild(loadingDiv);
+        showBox.appendChild(imageContainer);
 
-    showBox.appendChild(imageContainer);
+        // Lazy load image
+        const img = new Image();
+        img.classList.add('show-image');
+        const imageUrl = show.pictures?.large || show.pictures?.medium || show.pictures?.small || '';
 
-    // Lazy load image
-    const img = new Image();
-    img.classList.add('show-image');
+        img.onload = () => {
+            loadingDiv.remove();
+            imageContainer.appendChild(img);
+            img.classList.add('loaded');
+            if (fadeIn) {
+                requestAnimationFrame(() => {
+                    showBox.style.transition = 'opacity 0.3s ease-in';
+                    showBox.style.opacity = '1';
+                });
+            }
+        };
 
-    const imageUrl = show.pictures?.large || show.pictures?.medium || show.pictures?.small || '';
+        img.onerror = () => {
+            img.src = 'https://picsum.photos/200/200';
+            loadingDiv.remove();
+            imageContainer.appendChild(img);
+            img.classList.add('loaded');
+        };
 
-    img.onload = () => {
-        loadingDiv.remove();
-        imageContainer.appendChild(img);
-        img.classList.add('loaded');
-        // Fade in the whole show box after image loads
-        requestAnimationFrame(() => {
-            showBox.style.transition = 'opacity 0.3s ease-in';
-            showBox.style.opacity = '1';
-        });
-    };
-
-    img.onerror = () => {
-        img.src = 'https://picsum.photos/200/200';
-        loadingDiv.remove();
-        imageContainer.appendChild(img);
-        img.classList.add('loaded');
-    };
-
-    img.src = imageUrl;
-    img.alt = show.name || 'Show image';
-    img.loading = 'lazy';
+        img.src = imageUrl;
+        img.alt = show.name || 'Show image';
+        img.loading = 'lazy';
+    }
 
     // Show name
     const showName = document.createElement('div');
@@ -186,65 +193,81 @@ async function renderShows() {
 
     try {
         const { data: shows } = await fetchShows();
-
-        if (shows.length === 0) {
+        if (!shows.length) {
             showContainer.innerHTML = 'No shows available at the moment.';
             return;
         }
 
         showContainer.innerHTML = '';
-        
-        // Track merged shows
         const mergedShows = {};
         let processedCount = 0;
 
-        // Process shows in smaller batches
         async function processBatch() {
             const batchShows = shows.slice(processedCount, processedCount + BATCH_SIZE);
             if (batchShows.length === 0) return;
 
-            // Process this batch
-            for (const show of batchShows) {
+            const batchPromises = batchShows.map(async (show) => {
                 const showDetails = await fetchShowDetails(show.key);
-                if (!showDetails) continue;
+                if (!showDetails) return null;
 
                 const showTitle = showDetails.name.split(' hosted by')[0].trim();
                 const hostName = showDetails.name.match(/hosted by (.+)/i)?.[1] || 'Unknown Host';
 
                 if (!mergedShows[showTitle]) {
-                    // Create new show entry
                     mergedShows[showTitle] = {
                         ...showDetails,
                         hostName,
                         name: showTitle,
-                        uploads: [showDetails]
+                        uploads: [showDetails],
+                        latestDate: new Date(showDetails.created_time)
                     };
-                    
-                    // Render the show immediately
-                    const showBox = createShowBox(mergedShows[showTitle]);
-                    showContainer.appendChild(showBox);
                 } else {
-                    // Update existing show with new upload
                     mergedShows[showTitle].uploads.push(showDetails);
-                    // Re-render the updated show
-                    const existingBox = Array.from(showContainer.children)
-                        .find(box => box.querySelector('.show-name').textContent === showTitle);
-                    if (existingBox) {
-                        const updatedBox = createShowBox(mergedShows[showTitle]);
-                        existingBox.replaceWith(updatedBox);
+                    const newDate = new Date(showDetails.created_time);
+                    if (newDate > mergedShows[showTitle].latestDate) {
+                        mergedShows[showTitle].latestDate = newDate;
                     }
                 }
-            }
+                return showTitle;
+            });
+
+            await Promise.all(batchPromises);
+
+            // Sort all shows by latest date
+            const sortedShows = Object.values(mergedShows)
+                .sort((a, b) => b.latestDate - a.latestDate);
+
+            // Update DOM efficiently
+            const currentBoxes = new Map(
+                Array.from(showContainer.children).map(box => [
+                    box.querySelector('.show-name').textContent,
+                    box
+                ])
+            );
+
+            // Create or update shows in sorted order
+            sortedShows.forEach((show, index) => {
+                const existingBox = currentBoxes.get(show.name);
+                if (existingBox) {
+                    // Update existing show box without re-fading, passing the existing box
+                    const updatedBox = createShowBox(show, false, existingBox);
+                    updatedBox.style.opacity = '1';
+                    existingBox.replaceWith(updatedBox);
+                } else {
+                    // Create new show box with fade-in
+                    const newBox = createShowBox(show, true);
+                    showContainer.appendChild(newBox);
+                }
+            });
 
             processedCount += BATCH_SIZE;
 
-            // Continue with next batch after a delay
             if (processedCount < shows.length) {
-                setTimeout(() => processBatch(), BATCH_DELAY);
+                await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+                await processBatch();
             }
         }
 
-        // Start processing
         await processBatch();
 
     } catch (error) {
