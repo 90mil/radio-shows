@@ -3,6 +3,9 @@ const CLOUDCAST_API_URL = 'https://api.mixcloud.com/90milradio/cloudcasts/?limit
 const BATCH_SIZE = 6; // Smaller batch size for smoother loading
 const BATCH_DELAY = 50; // Milliseconds between batches
 const RANDOM_COLORS = ['#011410', '#003d2f', '#c25d05'];
+const SCROLL_THRESHOLD = 100; // px from bottom to trigger next batch
+let currentOffset = 0;
+let isLoadingMore = false;
 
 // DOM Elements
 const showContainer = document.getElementById('show-list');
@@ -154,7 +157,7 @@ function createShowBox(show, fadeIn = true, existingBox = null) {
     playDatesContainer.classList.add('play-dates-container');
 
     // Sort uploads by date (newest first)
-    const sortedUploads = [...show.uploads].sort((a, b) => 
+    const sortedUploads = [...show.uploads].sort((a, b) =>
         new Date(b.created_time) - new Date(a.created_time)
     );
 
@@ -196,23 +199,65 @@ async function fetchShows() {
     }
 }
 
-async function renderShows() {
-    showContainer.innerHTML = 'Loading shows...';
+// Add scroll handler
+function handleScroll() {
+    const scrollPosition = window.innerHeight + window.scrollY;
+    const documentHeight = document.documentElement.scrollHeight;
+    
+    // If we're near the bottom (100px threshold) and not currently loading
+    if (scrollPosition > documentHeight - 100 && !isLoadingMore) {
+        loadMoreShows();
+    }
+}
+
+// Add function to load more shows
+async function loadMoreShows() {
+    try {
+        isLoadingMore = true;
+        currentOffset += 100;
+        
+        const { data: newShows } = await fetchWithTimeout(
+            `${CLOUDCAST_API_URL}&offset=${currentOffset}`
+        );
+
+        if (newShows.length > 0) {
+            await renderShows(newShows, true); // Pass true to indicate this is additional content
+        }
+    } catch (error) {
+        console.error('Error loading more shows:', error);
+    } finally {
+        isLoadingMore = false;
+    }
+}
+
+// Modify renderShows to accept additional content
+async function renderShows(shows = null, isAdditional = false) {
+    if (!isAdditional) {
+        showContainer.innerHTML = 'Loading shows...';
+    }
 
     try {
-        const { data: shows } = await fetchShows();
-        if (!shows.length) {
-            showContainer.innerHTML = 'No shows available at the moment.';
+        const showsToRender = shows || (await fetchShows()).data;
+
+        if (showsToRender.length === 0) {
+            if (!isAdditional) {
+                showContainer.innerHTML = 'No shows available at the moment.';
+            }
             return;
         }
 
-        showContainer.innerHTML = '';
+        if (!isAdditional) {
+            showContainer.innerHTML = '';
+        }
+
         const mergedShows = {};
         let processedCount = 0;
 
         async function processBatch() {
-            const batchShows = shows.slice(processedCount, processedCount + BATCH_SIZE);
-            if (batchShows.length === 0) return;
+            const batchShows = showsToRender.slice(processedCount, processedCount + BATCH_SIZE);
+            if (batchShows.length === 0) {
+                return;
+            }
 
             const batchPromises = batchShows.map(async (show) => {
                 const showDetails = await fetchShowDetails(show.key);
@@ -247,22 +292,22 @@ async function renderShows() {
 
             // Update DOM efficiently
             const currentBoxes = new Map(
-                Array.from(showContainer.children).map(box => [
-                    box.querySelector('.show-name').textContent,
-                    box
-                ])
+                Array.from(showContainer.children)
+                    .filter(el => !el.id?.includes('scroll-loader'))
+                    .map(box => [
+                        box.querySelector('.show-name').textContent,
+                        box
+                    ])
             );
 
             // Create or update shows in sorted order
             sortedShows.forEach((show, index) => {
                 const existingBox = currentBoxes.get(show.name);
                 if (existingBox) {
-                    // Update existing show box without re-fading, passing the existing box
                     const updatedBox = createShowBox(show, false, existingBox);
                     updatedBox.style.opacity = '1';
                     existingBox.replaceWith(updatedBox);
                 } else {
-                    // Create new show box with fade-in
                     const newBox = createShowBox(show, true);
                     showContainer.appendChild(newBox);
                 }
@@ -270,7 +315,8 @@ async function renderShows() {
 
             processedCount += BATCH_SIZE;
 
-            if (processedCount < shows.length) {
+            // Continue processing if there are more shows in this set
+            if (processedCount < showsToRender.length) {
                 await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
                 await processBatch();
             }
@@ -280,9 +326,12 @@ async function renderShows() {
 
     } catch (error) {
         console.error('Error rendering shows:', error);
-        showContainer.innerHTML = 'Error loading shows. Please try again later.';
+        if (!isAdditional) {
+            showContainer.innerHTML = 'Error loading shows. Please try again later.';
+        }
     }
 }
 
 // Initialize
-renderShows(); 
+renderShows();
+window.addEventListener('scroll', handleScroll); 
