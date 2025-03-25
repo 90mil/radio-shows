@@ -6,6 +6,7 @@ const RANDOM_COLORS = ['#011410', '#003d2f', '#c25d05'];
 const SCROLL_THRESHOLD = 100; // px from bottom to trigger next batch
 let currentOffset = 0;
 let isLoadingMore = false;
+let reachedEnd = false;
 
 // DOM Elements
 const showContainer = document.getElementById('show-list');
@@ -59,6 +60,19 @@ function formatDate(dateString) {
         console.error('Error formatting date:', error);
         return 'Date unavailable';
     }
+}
+
+// Add this helper function
+function getMonthYear(dateString) {
+    const date = new Date(dateString);
+    return `${date.getMonth()}-${date.getFullYear()}`;
+}
+
+// Add this helper function to format month headers
+function formatMonthYear(date) {
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
+    return `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
 }
 
 // UI Components
@@ -123,10 +137,10 @@ function createShowBox(show, fadeIn = true, existingBox = null) {
         img.loading = 'lazy';
     }
 
-    // Show name
+    // Show name (without month/year)
     const showName = document.createElement('div');
     showName.classList.add('show-name');
-    showName.textContent = show.name.split(' hosted by')[0] || 'Unknown Show';
+    showName.textContent = show.name; // Just use the show name without date
     showBox.appendChild(showName);
 
     // Host name
@@ -157,9 +171,9 @@ function createShowBox(show, fadeIn = true, existingBox = null) {
     playDatesContainer.classList.add('play-dates-container');
 
     // Sort uploads by date (newest first) and remove duplicates
-    const uniqueUploads = [...new Map(show.uploads.map(upload => 
+    const uniqueUploads = [...new Map(show.uploads.map(upload =>
         [formatDate(upload.created_time), upload]
-    )).values()].sort((a, b) => 
+    )).values()].sort((a, b) =>
         new Date(b.created_time) - new Date(a.created_time)
     );
 
@@ -205,15 +219,17 @@ async function fetchShows() {
 function handleScroll() {
     const scrollPosition = window.innerHeight + window.scrollY;
     const documentHeight = document.documentElement.scrollHeight;
-
-    // If we're near the bottom (100px threshold) and not currently loading
-    if (scrollPosition > documentHeight - 100 && !isLoadingMore) {
+    
+    // Start loading when we're within 500px of the bottom
+    if (scrollPosition > documentHeight - 500 && !isLoadingMore && !reachedEnd) {
         loadMoreShows();
     }
 }
 
 // Add function to load more shows
 async function loadMoreShows() {
+    if (reachedEnd || isLoadingMore) return;
+
     try {
         isLoadingMore = true;
         currentOffset += 100;
@@ -222,11 +238,18 @@ async function loadMoreShows() {
             `${CLOUDCAST_API_URL}&offset=${currentOffset}`
         );
 
+        if (newShows.length === 0) {
+            reachedEnd = true;
+            return;
+        }
+
         if (newShows.length > 0) {
-            await renderShows(newShows, true); // Pass true to indicate this is additional content
+            await renderShows(newShows, true);
         }
     } catch (error) {
         console.error('Error loading more shows:', error);
+        // On error, reset the offset to try again
+        currentOffset -= 100;
     } finally {
         isLoadingMore = false;
     }
@@ -253,16 +276,6 @@ async function renderShows(shows = null, isAdditional = false) {
 
         let processedCount = 0;
         const mergedShows = new Map(); // Track shows across all batches
-        const existingBoxes = new Map(); // Track existing DOM elements
-
-        // Initialize existingBoxes with current DOM elements
-        Array.from(showContainer.children).forEach(box => {
-            const title = box.querySelector('.show-name').textContent;
-            existingBoxes.set(title, box);
-            if (box.__showData) {
-                mergedShows.set(title, box.__showData);
-            }
-        });
 
         async function processBatch() {
             const batchShows = showsToRender.slice(processedCount, processedCount + BATCH_SIZE);
@@ -274,48 +287,101 @@ async function renderShows(shows = null, isAdditional = false) {
 
                 const showTitle = showDetails.name.split(' hosted by')[0].trim();
                 const hostName = showDetails.name.match(/hosted by (.+)/i)?.[1] || 'Unknown Host';
+                const monthYear = getMonthYear(showDetails.created_time);
+                const showKey = `${showTitle}-${monthYear}`;
 
-                if (!mergedShows.has(showTitle)) {
-                    mergedShows.set(showTitle, {
+                // Create or update show entry for this month
+                if (!mergedShows.has(showKey)) {
+                    mergedShows.set(showKey, {
                         ...showDetails,
                         hostName,
                         name: showTitle,
+                        monthYear,
                         uploads: [showDetails],
                         latestDate: new Date(showDetails.created_time)
                     });
                 } else {
-                    const existingShow = mergedShows.get(showTitle);
+                    const existingShow = mergedShows.get(showKey);
                     existingShow.uploads.push(showDetails);
                     const newDate = new Date(showDetails.created_time);
                     if (newDate > existingShow.latestDate) {
                         existingShow.latestDate = newDate;
                     }
                 }
-                return showTitle;
+                return showKey;
             });
 
             await Promise.all(batchPromises);
 
-            // Sort all shows
-            const sortedShows = Array.from(mergedShows.values())
-                .sort((a, b) => b.latestDate - a.latestDate);
-
-            // Update positions of existing boxes and add new ones
-            sortedShows.forEach((show, index) => {
-                const existingBox = existingBoxes.get(show.name);
-                if (existingBox) {
-                    // Update existing box
-                    const updatedBox = createShowBox(show, false, existingBox);
-                    updatedBox.__showData = show;
-                    existingBox.replaceWith(updatedBox);
-                    existingBoxes.set(show.name, updatedBox);
-                } else {
-                    // Create new box
-                    const newBox = createShowBox(show, true);
-                    newBox.__showData = show;
-                    showContainer.appendChild(newBox);
-                    existingBoxes.set(show.name, newBox);
+            // Group shows by month/year
+            const showsByMonth = new Map();
+            Array.from(mergedShows.values()).forEach(show => {
+                const monthYear = formatMonthYear(show.latestDate);
+                if (!showsByMonth.has(monthYear)) {
+                    showsByMonth.set(monthYear, []);
                 }
+                showsByMonth.get(monthYear).push(show);
+            });
+
+            // Sort months by date (newest first)
+            const sortedMonths = Array.from(showsByMonth.entries())
+                .sort((a, b) => {
+                    const dateA = new Date(a[1][0].latestDate);
+                    const dateB = new Date(b[1][0].latestDate);
+                    return dateB - dateA;
+                });
+
+            // Update DOM while maintaining existing structure
+            sortedMonths.forEach(([monthYear, shows]) => {
+                let monthContainer = document.querySelector(`[data-month="${monthYear}"]`);
+
+                if (!monthContainer) {
+                    // Create new month section if it doesn't exist
+                    const monthHeader = document.createElement('div');
+                    monthHeader.classList.add('month-header');
+                    monthHeader.textContent = monthYear;
+
+                    monthContainer = document.createElement('div');
+                    monthContainer.classList.add('month-container');
+                    monthContainer.dataset.month = monthYear;
+
+                    // Find insertion point
+                    let insertPoint = null;
+                    const existingMonths = document.querySelectorAll('.month-container');
+                    for (const existing of existingMonths) {
+                        const existingDate = new Date(shows[0].latestDate);
+                        const currentDate = new Date(showsByMonth.get(existing.dataset.month)?.[0]?.latestDate);
+                        if (existingDate > currentDate) {
+                            insertPoint = existing;
+                            break;
+                        }
+                    }
+
+                    if (insertPoint) {
+                        showContainer.insertBefore(monthHeader, insertPoint.previousSibling);
+                        showContainer.insertBefore(monthContainer, insertPoint);
+                    } else {
+                        showContainer.appendChild(monthHeader);
+                        showContainer.appendChild(monthContainer);
+                    }
+                }
+
+                // Update shows within month container
+                shows.sort((a, b) => b.latestDate - a.latestDate)
+                    .forEach(show => {
+                        const existingBox = monthContainer.querySelector(`[data-show-key="${show.name}"]`);
+                        if (existingBox) {
+                            const updatedBox = createShowBox(show, false, existingBox);
+                            updatedBox.dataset.showKey = show.name;
+                            updatedBox.__showData = show;
+                            existingBox.replaceWith(updatedBox);
+                        } else {
+                            const newBox = createShowBox(show, true);
+                            newBox.dataset.showKey = show.name;
+                            newBox.__showData = show;
+                            monthContainer.appendChild(newBox);
+                        }
+                    });
             });
 
             processedCount += BATCH_SIZE;
