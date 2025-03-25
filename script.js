@@ -75,6 +75,13 @@ function formatMonthYear(date) {
     return `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
 }
 
+// Add this helper function
+function decodeHtmlEntities(text) {
+    const textarea = document.createElement('textarea');
+    textarea.innerHTML = text;
+    return textarea.value;
+}
+
 // UI Components
 function createPlayButton(uploadKey) {
     const button = document.createElement('button');
@@ -137,16 +144,16 @@ function createShowBox(show, fadeIn = true, existingBox = null) {
         img.loading = 'lazy';
     }
 
-    // Show name (without month/year)
+    // Show name with decoded HTML entities
     const showName = document.createElement('div');
     showName.classList.add('show-name');
-    showName.textContent = show.name; // Just use the show name without date
+    showName.textContent = decodeHtmlEntities(show.name);
     showBox.appendChild(showName);
 
-    // Host name
+    // Host name with decoded HTML entities
     const hostedBy = document.createElement('div');
     hostedBy.classList.add('hosted-by');
-    hostedBy.textContent = `Hosted by ${show.hostName}`;
+    hostedBy.textContent = `Hosted by ${decodeHtmlEntities(show.hostName)}`;
     showBox.appendChild(hostedBy);
 
     // Genres
@@ -219,7 +226,7 @@ async function fetchShows() {
 function handleScroll() {
     const scrollPosition = window.innerHeight + window.scrollY;
     const documentHeight = document.documentElement.scrollHeight;
-    
+
     // Start loading when we're within 500px of the bottom
     if (scrollPosition > documentHeight - 500 && !isLoadingMore && !reachedEnd) {
         loadMoreShows();
