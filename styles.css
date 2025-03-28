@@ -189,21 +189,35 @@ body {
         padding: 0 24px;
     }
 
-    .show-box {
-        width: calc(100% - 15px);
-    }
-
-    .play-bar {
-        height: 60px;
-        justify-content: center;
-    }
-
-    .play-bar iframe {
-        height: 60px;
-    }
-
     .month-container {
-        grid-template-columns: 1fr;
+        gap: 10px; /* Slightly smaller gap on mobile */
+    }
+
+    .show-box {
+        width: 100%;
+        min-height: 350px;
+    }
+
+    .show-name {
+        font-size: 13px; /* Slightly smaller font */
+    }
+
+    .description {
+        font-size: 7px; /* Slightly smaller font */
+    }
+
+    .play-container {
+        padding: 6px 8px; /* Smaller padding */
+    }
+
+    .play-date {
+        font-size: 9px; /* Slightly smaller font */
+    }
+}
+
+@media (max-width: 480px) {
+    .show-container {
+        padding: 0 16px;
     }
 }
 
@@ -240,7 +254,7 @@ body {
 
 .month-container {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
     gap: 15px;
     margin-bottom: 30px;
     width: 100%;
