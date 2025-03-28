@@ -12,7 +12,7 @@ body {
     margin: 0 auto;
     width: 100%;
     max-width: 1400px;
-    padding: 0 80px;
+    padding: 0 48px;
     box-sizing: border-box;
 }
 
@@ -186,7 +186,7 @@ body {
 
 @media (max-width: 768px) {
     .show-container {
-        padding: 0 40px;
+        padding: 0 24px;
     }
 
     .show-box {
