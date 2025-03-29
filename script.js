@@ -108,40 +108,46 @@ function createShowBox(show, fadeIn = true, existingBox = null) {
         imageContainer.appendChild(existingImage.cloneNode(true));
         showBox.appendChild(imageContainer);
     } else {
-        // Add loading indicator and load new image
         const loadingDiv = document.createElement('div');
         loadingDiv.classList.add('show-loading');
         loadingDiv.innerHTML = '<div class="loading-spinner"></div>';
         imageContainer.appendChild(loadingDiv);
         showBox.appendChild(imageContainer);
 
-        // Lazy load image
-        const img = new Image();
+        // Create and append image immediately
+        const img = document.createElement('img');
         img.classList.add('show-image');
+        imageContainer.appendChild(img);
+
         const imageUrl = show.pictures?.large || show.pictures?.medium || show.pictures?.small || '';
 
-        img.onload = () => {
-            loadingDiv.remove();
-            imageContainer.appendChild(img);
+        if (!imageUrl) {
+            img.src = 'https://picsum.photos/200/200';
+            loadingDiv.classList.add('hidden');
+            img.classList.add('loaded');
+            return;
+        }
+
+        // Simple load event listeners
+        img.addEventListener('load', function() {
+            loadingDiv.classList.add('hidden');
             img.classList.add('loaded');
             if (fadeIn) {
-                requestAnimationFrame(() => {
-                    showBox.style.transition = 'opacity 0.3s ease-in';
-                    showBox.style.opacity = '1';
-                });
+                showBox.style.transition = 'opacity 0.3s ease-in';
+                showBox.style.opacity = '1';
             }
-        };
+        });
 
-        img.onerror = () => {
+        img.addEventListener('error', function() {
             img.src = 'https://picsum.photos/200/200';
-            loadingDiv.remove();
-            imageContainer.appendChild(img);
+            loadingDiv.classList.add('hidden');
             img.classList.add('loaded');
-        };
+        });
 
-        img.src = imageUrl;
+        // Set image attributes
         img.alt = show.name || 'Show image';
         img.loading = 'lazy';
+        img.src = imageUrl;
     }
 
     // Show name with decoded HTML entities
