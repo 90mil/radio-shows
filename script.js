@@ -123,7 +123,7 @@ function createShowBox(show, fadeIn = true, existingBox = null) {
 
         // Simple load event listeners
         img.addEventListener('load', function () {
-            loadingDiv.classList.add('hidden');
+            loadingDiv.remove();  // Remove instead of hide
             img.classList.add('loaded');
             if (fadeIn) {
                 showBox.style.transition = 'opacity 0.3s ease-in';
@@ -133,7 +133,7 @@ function createShowBox(show, fadeIn = true, existingBox = null) {
 
         img.addEventListener('error', function () {
             img.src = 'https://picsum.photos/200/200';
-            loadingDiv.classList.add('hidden');
+            loadingDiv.remove();  // Remove instead of hide
             img.classList.add('loaded');
         });
 
