@@ -7,6 +7,8 @@ const SCROLL_THRESHOLD = 100; // px from bottom to trigger next batch
 let currentOffset = 0;
 let isLoadingMore = false;
 let reachedEnd = false;
+let activeLoadingSpinners = 0;
+const SPINNER_HIDE_DELAY = 300; // ms to keep spinner visible after load
 
 // DOM Elements
 const showContainer = document.getElementById('show-list');
@@ -95,7 +97,7 @@ function createShowBox(show, fadeIn = true, existingBox = null) {
     const showBox = document.createElement('div');
     showBox.classList.add('show-box');
     showBox.style.backgroundColor = '#011411';
-    showBox.style.opacity = fadeIn ? '0' : '1';
+    showBox.style.opacity = '1';
 
     // Create image container first
     const imageContainer = document.createElement('div');
@@ -104,7 +106,6 @@ function createShowBox(show, fadeIn = true, existingBox = null) {
     // Check if we have an existing loaded image to reuse
     const existingImage = existingBox?.querySelector('.show-image.loaded');
     if (existingImage) {
-        // Reuse existing loaded image
         imageContainer.appendChild(existingImage.cloneNode(true));
         showBox.appendChild(imageContainer);
     } else {
@@ -114,36 +115,31 @@ function createShowBox(show, fadeIn = true, existingBox = null) {
         imageContainer.appendChild(loadingDiv);
         showBox.appendChild(imageContainer);
 
-        // Create and append image immediately
         const img = document.createElement('img');
         img.classList.add('show-image');
         imageContainer.appendChild(img);
 
         const imageUrl = show.pictures?.large || show.pictures?.medium || show.pictures?.small || '';
 
-        // Simple load event listeners
         img.addEventListener('load', function () {
-            loadingDiv.remove();  // Remove instead of hide
+            loadingDiv.classList.add('fade-out');
             img.classList.add('loaded');
-            if (fadeIn) {
-                showBox.style.transition = 'opacity 0.3s ease-in';
-                showBox.style.opacity = '1';
-            }
+            setTimeout(() => loadingDiv.remove(), 300);
         });
 
         img.addEventListener('error', function () {
             img.src = 'https://picsum.photos/200/200';
-            loadingDiv.remove();  // Remove instead of hide
+            loadingDiv.classList.add('fade-out');
             img.classList.add('loaded');
+            setTimeout(() => loadingDiv.remove(), 300);
         });
 
-        // Set image attributes
         img.alt = show.name || 'Show image';
         img.loading = 'lazy';
         img.src = imageUrl;
     }
 
-    // Show name with decoded HTML entities
+    // Add rest of show content immediately
     const showName = document.createElement('div');
     showName.classList.add('show-name');
     showName.textContent = decodeHtmlEntities(show.name);
