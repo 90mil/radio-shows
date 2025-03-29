@@ -168,20 +168,36 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #011411; /* match card background instead of accent */
+    background: #011411;
+    opacity: 1;
+    transition: opacity 0.3s ease;
+}
+
+.show-loading.fade-out {
+    opacity: 0;
+    pointer-events: none;
 }
 
 .loading-spinner {
     width: 30px;
     height: 30px;
-    border: 3px solid #111411; /* main background color */
-    border-top-color: #e6eae9; /* text/details color */
+    border: 2px solid transparent;
+    border-top-color: #e6eae9;
     border-radius: 50%;
-    animation: spin 1s linear infinite;
+    animation: spin 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    opacity: 0.7;
+    will-change: transform; /* Optimize animation performance */
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    from {
+        transform: rotate(0deg);
+        opacity: 0.7;
+    }
+    to {
+        transform: rotate(360deg);
+        opacity: 0.5;
+    }
 }
 
 @media (max-width: 768px) {
