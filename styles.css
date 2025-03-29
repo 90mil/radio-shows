@@ -168,8 +168,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #2c4e55;
-    z-index: 1; /* Ensure loading spinner is above image */
+    background: #2c4e55; /* match card background */
 }
 
 .loading-spinner {
@@ -227,9 +226,8 @@ body {
     max-width: 190px;
     aspect-ratio: 1;
     margin-bottom: 8px;
-    background: #2c4e55;
+    background: #2c4e55; /* match card background */
     position: relative;
-    overflow: hidden; /* Ensure content doesn't spill out */
 }
 
 .show-image {
@@ -238,17 +236,10 @@ body {
     object-fit: cover;
     opacity: 0;
     transition: opacity 0.3s ease-in;
-    position: relative; /* Add this */
-    z-index: 0; /* Add this */
 }
 
 .show-image.loaded {
     opacity: 1;
-}
-
-/* Add this new style */
-.show-loading.hidden {
-    display: none;
 }
 
 .month-header {
