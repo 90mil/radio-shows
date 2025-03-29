@@ -265,6 +265,7 @@ async function loadMoreShows() {
 async function renderShows(shows = null, isAdditional = false) {
     if (!isAdditional) {
         showContainer.innerHTML = 'Loading shows...';
+        showContainer.classList.remove('loaded');  // Remove loaded class while loading
     }
 
     try {
@@ -279,6 +280,7 @@ async function renderShows(shows = null, isAdditional = false) {
 
         if (!isAdditional) {
             showContainer.innerHTML = '';
+            showContainer.classList.add('loaded');  // Add loaded class when shows are ready
         }
 
         let processedCount = 0;

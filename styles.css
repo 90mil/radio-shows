@@ -264,4 +264,13 @@ body {
 .month-container:first-of-type .month-header {
     margin-top: 0;
     padding-top: 0;
+}
+
+/* Add this new style */
+.show-container:not(.loaded) {
+    padding-top: 12px;
+    margin-top: 12px;  /* Add space above loading message */
+    font-family: 'Abel', sans-serif;
+    font-size: 20px;
+    color: #e6eae9;
 } 
